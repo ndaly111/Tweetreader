@@ -1,40 +1,76 @@
 import feedparser
+import time
+import datetime
+import os
 
-# The Nitter instance we'll try to use:
+# You can track multiple usernames if you wish:
+USERNAMES = [
+    "jpfinlayNBCS"
+    # You can add more, for example: "elonmusk", "jack", etc.
+]
+
+# Base Nitter instance (change if nitter.net is down):
 NITTER_BASE = "https://nitter.net"
 
-# The Twitter username we want to follow (without the @):
-USERNAME = "jpfinlayNBCS"
+# Output file where we'll store tweets in plain text:
+OUTPUT_TEXT_FILE = "tweets.txt"
 
 def main():
-    # Build the RSS feed URL for this username
-    feed_url = f"{NITTER_BASE}/{USERNAME}/rss"
-    
-    print(f"Attempting to fetch RSS feed:\n  {feed_url}\n")
+    # We'll open the file in write mode each time, overwriting old content.
+    # If you prefer to append, use mode="a" instead of "w".
+    with open(OUTPUT_TEXT_FILE, "w", encoding="utf-8") as outfile:
+        for username in USERNAMES:
+            feed_url = f"{NITTER_BASE}/{username}/rss"
+            print(f"Fetching RSS feed: {feed_url}")
+            
+            # Parse the RSS
+            feed = feedparser.parse(feed_url)
 
-    # Parse the feed
-    feed = feedparser.parse(feed_url)
+            # Optional: check HTTP status if available
+            if hasattr(feed, 'status'):
+                print(f" - HTTP status: {feed.status}")
+                if feed.status != 200:
+                    print("   Something might be wrong (or the instance is down).")
+                    outfile.write(f"\nERROR fetching {username}: HTTP {feed.status}\n")
+                    continue  # skip this user if error
 
-    # If feed.status is available, it can help diagnose success or failure
-    if hasattr(feed, 'status'):
-        print(f"HTTP status: {feed.status}")
-        if feed.status != 200:
-            print("There may be an error or the Nitter instance is down.")
-    
-    # Print basic feed info
-    print(f"Feed Title: {feed.feed.get('title', 'No title')}")
-    print(f"Feed Link: {feed.feed.get('link', 'No link')}")
-    print("\n--- Recent Entries ---\n")
+            # Print feed info (just for debugging)
+            feed_title = feed.feed.get("title", f"Tweets by {username}")
+            print(f" - Feed Title: {feed_title}\n")
 
-    # Loop through the first few entries (tweets)
-    for idx, entry in enumerate(feed.entries[:5], start=1):
-        print(f"{idx}. Title: {entry.title}")
-        print(f"   Link:  {entry.link}")
-        if hasattr(entry, 'published'):
-            print(f"   Time:  {entry.published}")
-        print("")
+            outfile.write(f"=== {feed_title} ===\n")
 
-    print("Done.")
+            # Iterate through entries
+            entries = feed.entries[:10]  # limit to the first 10 for brevity
+            if not entries:
+                outfile.write("No tweets found or feed is empty.\n\n")
+                continue
+
+            for idx, entry in enumerate(entries, start=1):
+                # Title is usually the tweet text
+                title = entry.title if hasattr(entry, "title") else "No title"
+                link = entry.link if hasattr(entry, "link") else "No link"
+
+                # Published time
+                if hasattr(entry, "published"):
+                    published = entry.published
+                else:
+                    # fallback if not present
+                    published = "No published date"
+
+                # Write to console
+                print(f"{idx}. {title}")
+                print(f"   Link:  {link}")
+                print(f"   Time:  {published}\n")
+
+                # Write to our output file
+                outfile.write(f"{idx}. {title}\n")
+                outfile.write(f"   Link:  {link}\n")
+                outfile.write(f"   Time:  {published}\n\n")
+
+            outfile.write("\n")  # extra spacing after each user's feed
+
+    print(f"\nDone! Output saved to '{OUTPUT_TEXT_FILE}'.")
 
 if __name__ == "__main__":
     main()
