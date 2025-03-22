@@ -1,16 +1,15 @@
 import asyncio
 from playwright.async_api import async_playwright
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo  # ✅ Python 3.9+ for timezone conversion
+from zoneinfo import ZoneInfo
 
 USERNAMES = ["JPFinlayNBCS"]
 OUTPUT_FILE = "tweets.txt"
-DEBUG_MODE = True  # ✅ Turn ON to print debug data
-FILTER_LAST_24_HOURS = True  # ✅ Set to False to disable filtering for testing
+DEBUG_MODE = True
+FILTER_LAST_24_HOURS = True  # ✅ Still filters, but now logs skips
 
 def convert_to_eastern(iso_time):
     try:
-        # Normalize ISO format to handle milliseconds or no 'Z'
         iso_time = iso_time.replace('Z', '+00:00')
         utc_time = datetime.fromisoformat(iso_time)
         eastern = utc_time.astimezone(ZoneInfo('America/New_York'))
@@ -22,6 +21,7 @@ def convert_to_eastern(iso_time):
 
 async def fetch_tweets(username):
     tweets = []
+    skipped_tweets = []  # ✅ Collect skipped tweets for logging
     url = f"https://twitter.com/{username}"
 
     async with async_playwright() as p:
@@ -33,11 +33,10 @@ async def fetch_tweets(username):
 
         print(f"Fetching tweets from {url}")
         await page.goto(url, timeout=60000)
-
         await page.wait_for_selector('article', timeout=15000)
-        tweet_articles = await page.locator('article').all()
 
-        print(f"✅ Found {len(tweet_articles)} tweet articles to process")
+        tweet_articles = await page.locator('article').all()
+        print(f"✅ Found {len(tweet_articles)} tweet articles")
 
         for article in tweet_articles:
             try:
@@ -54,7 +53,6 @@ async def fetch_tweets(username):
                 if DEBUG_MODE:
                     print(f"🕒 TWEET TIME UTC: {utc_time}, Eastern: {eastern_time_str}")
 
-                # ✅ 24-hour filtering logic
                 if FILTER_LAST_24_HOURS:
                     if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
                         tweets.append({
@@ -63,10 +61,13 @@ async def fetch_tweets(username):
                             "time": eastern_time_str
                         })
                     else:
-                        if DEBUG_MODE:
-                            print("⏩ Tweet skipped - older than 24 hours")
+                        skipped_tweets.append({
+                            "username": username,
+                            "text": tweet_text.strip(),
+                            "time": eastern_time_str,
+                            "reason": "⏩ Older than 24 hours"
+                        })
                 else:
-                    # ✅ If filter is OFF, capture all tweets
                     tweets.append({
                         "username": username,
                         "text": tweet_text.strip(),
@@ -79,24 +80,33 @@ async def fetch_tweets(username):
                 continue
 
         await browser.close()
-    return tweets
+    return tweets, skipped_tweets
 
 async def main():
     all_tweets = []
+    skipped_tweets = []
+
     for username in USERNAMES:
-        tweets = await fetch_tweets(username)
+        tweets, skipped = await fetch_tweets(username)
         if tweets:
             print(f"✅ Fetched {len(tweets)} tweets from {username}")
         else:
             print(f"❌ No tweets found for {username}")
         all_tweets.extend(tweets)
+        skipped_tweets.extend(skipped)
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write("✅ SAVED TWEETS:\n\n")
         for idx, tweet in enumerate(all_tweets, 1):
             f.write(f"{idx}. @{tweet['username']} - {tweet['time']}\n")
             f.write(f"   Tweet: {tweet['text']}\n\n")
 
-    print(f"✅ Saved {len(all_tweets)} tweets to {OUTPUT_FILE}")
+        f.write("\n⏩ SKIPPED TWEETS:\n\n")
+        for idx, tweet in enumerate(skipped_tweets, 1):
+            f.write(f"{idx}. @{tweet['username']} - {tweet['time']} ({tweet['reason']})\n")
+            f.write(f"   Tweet: {tweet['text']}\n\n")
+
+    print(f"✅ Saved {len(all_tweets)} tweets and {len(skipped_tweets)} skipped tweets to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     asyncio.run(main())
