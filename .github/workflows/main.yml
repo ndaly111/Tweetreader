@@ -2,7 +2,7 @@ name: Fetch Tweets
 
 on:
   schedule:
-    - cron: "30 10 * * 1-5"  # Runs Mon-Fri at 10:30 UTC (adjust times as needed)
+    - cron: "30 10 * * 1-5"  # Runs Mon-Fri at 10:30 UTC
   workflow_dispatch:
 
 jobs:
