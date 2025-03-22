@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 USERNAMES = ["JPFinlayNBCS"]
 OUTPUT_FILE = "tweets.txt"
 DEBUG_MODE = True
-FILTER_LAST_24_HOURS = True  # ✅ Still filters, but now logs skips
+FILTER_LAST_24_HOURS = True
 
 def convert_to_eastern(iso_time):
     try:
@@ -20,24 +20,28 @@ def convert_to_eastern(iso_time):
         return "Unknown Time", None
 
 async def fetch_tweets(username):
-    tweets = []
-    skipped_tweets = []  # ✅ Collect skipped tweets for logging
+    tweets_collected = []
+    skipped_tweets = []
     url = f"https://twitter.com/{username}"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
+        context = await browser.new_context()
         page = await context.new_page()
 
         print(f"Fetching tweets from {url}")
         await page.goto(url, timeout=60000)
         await page.wait_for_selector('article', timeout=15000)
 
+        # ✅ Force scroll to load more tweets
+        for _ in range(3):  
+            await page.mouse.wheel(0, 2000)
+            await page.wait_for_timeout(2000)
+
         tweet_articles = await page.locator('article').all()
         print(f"✅ Found {len(tweet_articles)} tweet articles")
 
+        # ✅ Collect tweet data
         for article in tweet_articles:
             try:
                 tweet_text = await article.locator('div[data-testid="tweetText"]').inner_text()
@@ -45,42 +49,38 @@ async def fetch_tweets(username):
 
                 if not tweet_time_iso:
                     if DEBUG_MODE:
-                        print("⚠️ Time tag missing for a tweet, skipping...")
+                        print("⚠️ Time tag missing, skipping...")
                     continue
 
                 eastern_time_str, utc_time = convert_to_eastern(tweet_time_iso)
-
-                if DEBUG_MODE:
-                    print(f"🕒 TWEET TIME UTC: {utc_time}, Eastern: {eastern_time_str}")
-
-                if FILTER_LAST_24_HOURS:
-                    if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
-                        tweets.append({
-                            "username": username,
-                            "text": tweet_text.strip(),
-                            "time": eastern_time_str
-                        })
-                    else:
-                        skipped_tweets.append({
-                            "username": username,
-                            "text": tweet_text.strip(),
-                            "time": eastern_time_str,
-                            "reason": "⏩ Older than 24 hours"
-                        })
-                else:
-                    tweets.append({
-                        "username": username,
-                        "text": tweet_text.strip(),
-                        "time": eastern_time_str
-                    })
-
+                tweets_collected.append({
+                    "username": username,
+                    "text": tweet_text.strip(),
+                    "time": eastern_time_str,
+                    "utc_time": utc_time
+                })
             except Exception as e:
                 if DEBUG_MODE:
                     print(f"⚠️ Error processing tweet: {e}")
                 continue
 
         await browser.close()
-    return tweets, skipped_tweets
+
+    # ✅ Sort tweets by UTC time (most recent first)
+    tweets_collected.sort(key=lambda x: x['utc_time'], reverse=True)
+
+    # ✅ Filter based on 24-hour window AFTER sorting
+    final_tweets = []
+    for tweet in tweets_collected:
+        if FILTER_LAST_24_HOURS:
+            if tweet['utc_time'] and (datetime.now(tz=ZoneInfo('UTC')) - tweet['utc_time']) <= timedelta(hours=24):
+                final_tweets.append(tweet)
+            else:
+                skipped_tweets.append({**tweet, "reason": "⏩ Older than 24 hours"})
+        else:
+            final_tweets.append(tweet)
+
+    return final_tweets, skipped_tweets
 
 async def main():
     all_tweets = []
@@ -88,10 +88,7 @@ async def main():
 
     for username in USERNAMES:
         tweets, skipped = await fetch_tweets(username)
-        if tweets:
-            print(f"✅ Fetched {len(tweets)} tweets from {username}")
-        else:
-            print(f"❌ No tweets found for {username}")
+        print(f"✅ Fetched {len(tweets)} tweets from {username}")
         all_tweets.extend(tweets)
         skipped_tweets.extend(skipped)
 
