@@ -32,42 +32,48 @@ async def fetch_tweets(username):
         print(f"Fetching tweets from {url}")
         await page.goto(url, timeout=60000)
         await page.wait_for_selector('article', timeout=15000)
+        await page.wait_for_timeout(5000)
 
-        last_height = await page.evaluate("document.body.scrollHeight")
+        scrolls = 0
+        MAX_SCROLLS = 12
+        recent_found = False
 
-        # ✅ Slow, interactive scrolling to load tweets naturally
-        for _ in range(8):
-            await page.evaluate("window.scrollBy(0, 800)")
-            await page.wait_for_timeout(5000)  # Wait 5 seconds per scroll
-            new_height = await page.evaluate("document.body.scrollHeight")
-            if new_height == last_height:
-                break  # Exit if no more content loads
-            last_height = new_height
+        while scrolls < MAX_SCROLLS and not recent_found:
+            tweet_articles = await page.locator('article').all()
+            print(f"✅ Found {len(tweet_articles)} tweet articles (scroll {scrolls+1})")
 
-        tweet_articles = await page.locator('article').all()
-        print(f"✅ Found {len(tweet_articles)} tweet articles")
+            for article in tweet_articles:
+                try:
+                    tweet_text = await article.locator('div[data-testid="tweetText"]').inner_text()
+                    tweet_time_iso = await article.locator('time').get_attribute('datetime')
 
-        for article in tweet_articles:
-            try:
-                tweet_text = await article.locator('div[data-testid="tweetText"]').inner_text()
-                tweet_time_iso = await article.locator('time').get_attribute('datetime')
+                    if not tweet_time_iso:
+                        continue
 
-                if not tweet_time_iso:
+                    eastern_time_str, utc_time = convert_to_eastern(tweet_time_iso)
+                    tweets_collected.append({
+                        "username": username,
+                        "text": tweet_text.strip(),
+                        "time": eastern_time_str,
+                        "utc_time": utc_time
+                    })
+
+                    # ✅ Check for recent tweets as a signal to stop scrolling
+                    if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
+                        recent_found = True
+                except Exception as e:
                     if DEBUG_MODE:
-                        print("⚠️ Time tag missing, skipping...")
+                        print(f"⚠️ Error processing tweet: {e}")
                     continue
 
-                eastern_time_str, utc_time = convert_to_eastern(tweet_time_iso)
-                tweets_collected.append({
-                    "username": username,
-                    "text": tweet_text.strip(),
-                    "time": eastern_time_str,
-                    "utc_time": utc_time
-                })
-            except Exception as e:
-                if DEBUG_MODE:
-                    print(f"⚠️ Error processing tweet: {e}")
-                continue
+            if recent_found:
+                print("✅ Recent tweet found, stopping scroll early")
+                break
+
+            # ✅ Scroll and wait for more tweets to load
+            await page.evaluate("window.scrollBy(0, 1500)")
+            await page.wait_for_timeout(4000)
+            scrolls += 1
 
         await browser.close()
 
