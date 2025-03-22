@@ -5,13 +5,19 @@ from zoneinfo import ZoneInfo  # ✅ Python 3.9+ for timezone conversion
 
 USERNAMES = ["JPFinlayNBCS"]
 OUTPUT_FILE = "tweets.txt"
+DEBUG_MODE = True  # ✅ Turn ON to print debug data
+FILTER_LAST_24_HOURS = True  # ✅ Set to False to disable filtering for testing
 
 def convert_to_eastern(iso_time):
     try:
-        utc_time = datetime.fromisoformat(iso_time.replace('Z', '+00:00'))
+        # Normalize ISO format to handle milliseconds or no 'Z'
+        iso_time = iso_time.replace('Z', '+00:00')
+        utc_time = datetime.fromisoformat(iso_time)
         eastern = utc_time.astimezone(ZoneInfo('America/New_York'))
         return eastern.strftime("%b %d, %Y - %I:%M %p ET"), utc_time
-    except Exception:
+    except Exception as e:
+        if DEBUG_MODE:
+            print(f"⚠️ Error parsing time: {e} | Raw time: {iso_time}")
         return "Unknown Time", None
 
 async def fetch_tweets(username):
@@ -28,9 +34,10 @@ async def fetch_tweets(username):
         print(f"Fetching tweets from {url}")
         await page.goto(url, timeout=60000)
 
-        # ✅ Wait for tweets to load
         await page.wait_for_selector('article', timeout=15000)
         tweet_articles = await page.locator('article').all()
+
+        print(f"✅ Found {len(tweet_articles)} tweet articles to process")
 
         for article in tweet_articles:
             try:
@@ -38,20 +45,38 @@ async def fetch_tweets(username):
                 tweet_time_iso = await article.locator('time').get_attribute('datetime')
 
                 if not tweet_time_iso:
-                    continue  # Skip if no time found
+                    if DEBUG_MODE:
+                        print("⚠️ Time tag missing for a tweet, skipping...")
+                    continue
 
                 eastern_time_str, utc_time = convert_to_eastern(tweet_time_iso)
 
-                # ✅ Filter: Only include tweets from the last 24 hours
-                if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
+                if DEBUG_MODE:
+                    print(f"🕒 TWEET TIME UTC: {utc_time}, Eastern: {eastern_time_str}")
+
+                # ✅ 24-hour filtering logic
+                if FILTER_LAST_24_HOURS:
+                    if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
+                        tweets.append({
+                            "username": username,
+                            "text": tweet_text.strip(),
+                            "time": eastern_time_str
+                        })
+                    else:
+                        if DEBUG_MODE:
+                            print("⏩ Tweet skipped - older than 24 hours")
+                else:
+                    # ✅ If filter is OFF, capture all tweets
                     tweets.append({
                         "username": username,
                         "text": tweet_text.strip(),
                         "time": eastern_time_str
                     })
 
-            except:
-                continue  # Skip if any part fails
+            except Exception as e:
+                if DEBUG_MODE:
+                    print(f"⚠️ Error processing tweet: {e}")
+                continue
 
         await browser.close()
     return tweets
