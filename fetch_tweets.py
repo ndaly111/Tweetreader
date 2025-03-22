@@ -1,4 +1,5 @@
 import asyncio
+import random
 from playwright.async_api import async_playwright
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -35,12 +36,12 @@ async def fetch_tweets(username):
         await page.wait_for_timeout(5000)
 
         scrolls = 0
-        MAX_SCROLLS = 12
+        MAX_SCROLLS = 15
         recent_found = False
 
         while scrolls < MAX_SCROLLS and not recent_found:
             tweet_articles = await page.locator('article').all()
-            print(f"✅ Found {len(tweet_articles)} tweet articles (scroll {scrolls+1})")
+            print(f"✅ Found {len(tweet_articles)} tweet articles (scroll {scrolls + 1})")
 
             for article in tweet_articles:
                 try:
@@ -58,7 +59,7 @@ async def fetch_tweets(username):
                         "utc_time": utc_time
                     })
 
-                    # ✅ Check for recent tweets as a signal to stop scrolling
+                    # ✅ Check for recent tweets
                     if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
                         recent_found = True
                 except Exception as e:
@@ -70,9 +71,15 @@ async def fetch_tweets(username):
                 print("✅ Recent tweet found, stopping scroll early")
                 break
 
-            # ✅ Scroll and wait for more tweets to load
-            await page.evaluate("window.scrollBy(0, 1500)")
-            await page.wait_for_timeout(4000)
+            # ✅ Add human-like random scrolling behavior
+            scroll_distance = random.randint(400, 1000)
+            await page.evaluate(f"window.scrollBy(0, {scroll_distance})")
+            if random.random() < 0.3:
+                pause = random.randint(6000, 10000)
+            else:
+                pause = random.randint(3000, 7000)
+            await page.wait_for_timeout(pause)
+
             scrolls += 1
 
         await browser.close()
