@@ -2,7 +2,7 @@ name: Fetch Tweets
 
 on:
   schedule:
-    - cron: "30 10 * * 1-5"  # Runs Mon-Fri at 10:30 UTC
+    - cron: "30 10 * * 1-5"  # Adjust schedule as needed
   workflow_dispatch:
 
 jobs:
@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
