@@ -8,7 +8,7 @@ USERNAMES = [
     "jpfinlayNBCS"
     # You can add more, for example: "elonmusk", "jack", etc.
 ]
-
+#initial commit
 # Base Nitter instance (change if nitter.net is down):
 NITTER_BASE = "https://nitter.net"
 
