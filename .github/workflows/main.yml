@@ -1,5 +1,8 @@
 name: Fetch Tweets
 
+permissions:
+  contents: write  # ✅ REQUIRED for git push to work
+
 on:
   schedule:
     - cron: '30 13 * * 1-5'  # ✅ Runs at 9:30 AM ET Mon-Fri (adjust as needed)
