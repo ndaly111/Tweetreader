@@ -31,20 +31,22 @@ async def fetch_tweets(username):
 
         print(f"Fetching tweets from {url}")
         await page.goto(url, timeout=60000)
-
-        # ✅ Allow full JS execution and initial load
         await page.wait_for_selector('article', timeout=15000)
-        await page.wait_for_timeout(5000)  # ✅ WAIT 5 SECONDS after page load
 
-        # ✅ Scroll multiple times, waiting each time
-        for _ in range(5):
-            await page.mouse.wheel(0, 3000)
-            await page.wait_for_timeout(5000)  # ✅ Wait after each scroll
+        last_height = await page.evaluate("document.body.scrollHeight")
+
+        # ✅ Slow, interactive scrolling to load tweets naturally
+        for _ in range(8):
+            await page.evaluate("window.scrollBy(0, 800)")
+            await page.wait_for_timeout(5000)  # Wait 5 seconds per scroll
+            new_height = await page.evaluate("document.body.scrollHeight")
+            if new_height == last_height:
+                break  # Exit if no more content loads
+            last_height = new_height
 
         tweet_articles = await page.locator('article').all()
         print(f"✅ Found {len(tweet_articles)} tweet articles")
 
-        # ✅ Collect tweet data
         for article in tweet_articles:
             try:
                 tweet_text = await article.locator('div[data-testid="tweetText"]').inner_text()
@@ -69,10 +71,8 @@ async def fetch_tweets(username):
 
         await browser.close()
 
-    # ✅ Sort by UTC time (newest first)
     tweets_collected.sort(key=lambda x: x['utc_time'], reverse=True)
 
-    # ✅ Filter 24-hour window AFTER sorting
     final_tweets = []
     for tweet in tweets_collected:
         if FILTER_LAST_24_HOURS:
