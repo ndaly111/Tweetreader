@@ -1,12 +1,12 @@
 import requests
 from bs4 import BeautifulSoup
-import datetime
 
-USERNAMES = ["jpfinlayNBCS"]  # Add more Twitter usernames here
+USERNAMES = ["jpfinlayNBCS"]
+NITTER_INSTANCE = "https://nitter.net"  # You can change to a live instance
 OUTPUT_FILE = "tweets.txt"
 
-def fetch_tweets(username):
-    url = f"https://mobile.twitter.com/{username}"
+def fetch_nitter_tweets(username):
+    url = f"{NITTER_INSTANCE}/{username}"
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
 
@@ -17,21 +17,22 @@ def fetch_tweets(username):
     soup = BeautifulSoup(response.text, "html.parser")
     tweets = []
 
-    for tweet_div in soup.find_all("table", class_="tweet"):
-        tweet_text = tweet_div.find("div", class_="dir-ltr").get_text(strip=True)
-        time_tag = tweet_div.find("td", class_="timestamp")
-        time_text = time_tag.get_text(strip=True) if time_tag else "Unknown Time"
+    for tweet in soup.find_all("div", class_="tweet-content"):
+        tweet_text = tweet.get_text(strip=True)
+        time_tag = tweet.find_parent("div", class_="timeline-item").find("span", class_="tweet-date")
+        tweet_time = time_tag.get_text(strip=True) if time_tag else "Unknown Time"
         tweets.append({
             "username": username,
             "text": tweet_text,
-            "time": time_text
+            "time": tweet_time
         })
+
     return tweets
 
 def main():
     all_tweets = []
     for username in USERNAMES:
-        all_tweets.extend(fetch_tweets(username))
+        all_tweets.extend(fetch_nitter_tweets(username))
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         for idx, tweet in enumerate(all_tweets, 1):
