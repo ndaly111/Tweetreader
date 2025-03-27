@@ -30,20 +30,22 @@ async def fetch_tweets_from_list():
 
         print(f"Fetching tweets from {LIST_URL}")
         await page.goto(LIST_URL, timeout=60000)
-        await page.wait_for_timeout(8000)  # Wait for list content to load
+        await page.wait_for_timeout(5000)  # Let things render
 
         scrolls = 0
         MAX_SCROLLS = 10
         recent_found = False
 
-        while scrolls < MAX_SCROLLS:
-            tweet_blocks = await page.locator('div[data-testid="cellInnerDiv"]').all()
-            print(f"✅ Found {len(tweet_blocks)} tweet blocks (scroll {scrolls+1})")
+        while scrolls < MAX_SCROLLS and not recent_found:
+            tweet_blocks = await page.locator('div[role="listitem"] div[data-testid="tweetText"]').element_handles()
+            print(f"✅ Found {len(tweet_blocks)} tweet blocks (scroll {scrolls + 1})")
 
             for block in tweet_blocks:
                 try:
-                    tweet_text = await block.locator('div[data-testid="tweetText"]').inner_text()
-                    tweet_time_iso = await block.locator('time').get_attribute('datetime')
+                    tweet_text = await block.inner_text()
+                    parent_article = await block.evaluate_handle("node => node.closest('article')")
+                    tweet_time = await parent_article.query_selector('time')
+                    tweet_time_iso = await tweet_time.get_attribute('datetime') if tweet_time else None
 
                     if not tweet_time_iso:
                         continue
@@ -60,22 +62,21 @@ async def fetch_tweets_from_list():
 
                 except Exception as e:
                     if DEBUG_MODE:
-                        print(f"⚠️ Error processing tweet: {e}")
+                        print(f"⚠️ Error processing tweet block: {e}")
                     continue
 
             if recent_found:
                 print("✅ Recent tweet found, stopping scroll early")
                 break
 
-            await page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
+            await page.evaluate("window.scrollBy(0, 1500)")
             await page.wait_for_timeout(4000)
             scrolls += 1
 
-        if len(tweets_collected) == 0 and DEBUG_MODE:
-            html_content = await page.content()
+        if not tweets_collected and DEBUG_MODE:
+            html = await page.content()
             with open("debug_list.html", "w", encoding="utf-8") as f:
-                f.write(html_content)
-            print("❌ No tweets collected. Page content saved to debug_list.html for review.")
+                f.write(html)
 
         await browser.close()
 
@@ -94,11 +95,11 @@ async def fetch_tweets_from_list():
     return final_tweets, skipped_tweets
 
 async def main():
-    tweets, skipped_tweets = await fetch_tweets_from_list()
+    all_tweets, skipped_tweets = await fetch_tweets_from_list()
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write("✅ SAVED TWEETS:\n\n")
-        for idx, tweet in enumerate(tweets, 1):
+        for idx, tweet in enumerate(all_tweets, 1):
             f.write(f"{idx}. {tweet['time']}\n")
             f.write(f"   Tweet: {tweet['text']}\n\n")
 
@@ -107,7 +108,7 @@ async def main():
             f.write(f"{idx}. {tweet['time']} ({tweet['reason']})\n")
             f.write(f"   Tweet: {tweet['text']}\n\n")
 
-    print(f"✅ Saved {len(tweets)} tweets and {len(skipped_tweets)} skipped tweets to {OUTPUT_FILE}")
+    print(f"✅ Saved {len(all_tweets)} tweets and {len(skipped_tweets)} skipped tweets to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     asyncio.run(main())
