@@ -1,11 +1,11 @@
 import asyncio
-import random
 from playwright.async_api import async_playwright
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import random
 
-USERNAMES = ["JPFinlayNBCS"]
-OUTPUT_FILE = "tweets.txt"
+LIST_URL = "https://x.com/i/lists/940937136844476421"
+OUTPUT_FILE = "tweets_from_list.txt"
 DEBUG_MODE = True
 FILTER_LAST_24_HOURS = True
 
@@ -20,28 +20,27 @@ def convert_to_eastern(iso_time):
             print(f"⚠️ Error parsing time: {e} | Raw time: {iso_time}")
         return "Unknown Time", None
 
-async def fetch_tweets(username):
+async def fetch_tweets_from_list():
     tweets_collected = []
     skipped_tweets = []
-    url = f"https://twitter.com/{username}"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
 
-        print(f"Fetching tweets from {url}")
-        await page.goto(url, timeout=60000)
+        print(f"Fetching tweets from {LIST_URL}")
+        await page.goto(LIST_URL, timeout=60000)
         await page.wait_for_selector('article', timeout=15000)
         await page.wait_for_timeout(5000)
 
         scrolls = 0
-        MAX_SCROLLS = 15
+        MAX_SCROLLS = 12
         recent_found = False
 
         while scrolls < MAX_SCROLLS and not recent_found:
             tweet_articles = await page.locator('article').all()
-            print(f"✅ Found {len(tweet_articles)} tweet articles (scroll {scrolls + 1})")
+            print(f"✅ Found {len(tweet_articles)} tweet articles (scroll {scrolls+1})")
 
             for article in tweet_articles:
                 try:
@@ -53,13 +52,11 @@ async def fetch_tweets(username):
 
                     eastern_time_str, utc_time = convert_to_eastern(tweet_time_iso)
                     tweets_collected.append({
-                        "username": username,
                         "text": tweet_text.strip(),
                         "time": eastern_time_str,
                         "utc_time": utc_time
                     })
 
-                    # ✅ Check for recent tweets
                     if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
                         recent_found = True
                 except Exception as e:
@@ -71,15 +68,10 @@ async def fetch_tweets(username):
                 print("✅ Recent tweet found, stopping scroll early")
                 break
 
-            # ✅ Add human-like random scrolling behavior
-            scroll_distance = random.randint(400, 1000)
+            # Human-like scrolling
+            scroll_distance = random.randint(1000, 2000)
             await page.evaluate(f"window.scrollBy(0, {scroll_distance})")
-            if random.random() < 0.3:
-                pause = random.randint(6000, 10000)
-            else:
-                pause = random.randint(3000, 7000)
-            await page.wait_for_timeout(pause)
-
+            await page.wait_for_timeout(random.randint(3000, 5000))
             scrolls += 1
 
         await browser.close()
@@ -99,27 +91,21 @@ async def fetch_tweets(username):
     return final_tweets, skipped_tweets
 
 async def main():
-    all_tweets = []
-    skipped_tweets = []
-
-    for username in USERNAMES:
-        tweets, skipped = await fetch_tweets(username)
-        print(f"✅ Fetched {len(tweets)} tweets from {username}")
-        all_tweets.extend(tweets)
-        skipped_tweets.extend(skipped)
+    tweets, skipped = await fetch_tweets_from_list()
+    print(f"✅ Fetched {len(tweets)} tweets from the list")
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write("✅ SAVED TWEETS:\n\n")
-        for idx, tweet in enumerate(all_tweets, 1):
-            f.write(f"{idx}. @{tweet['username']} - {tweet['time']}\n")
+        for idx, tweet in enumerate(tweets, 1):
+            f.write(f"{idx}. {tweet['time']}\n")
             f.write(f"   Tweet: {tweet['text']}\n\n")
 
         f.write("\n⏩ SKIPPED TWEETS:\n\n")
-        for idx, tweet in enumerate(skipped_tweets, 1):
-            f.write(f"{idx}. @{tweet['username']} - {tweet['time']} ({tweet['reason']})\n")
+        for idx, tweet in enumerate(skipped, 1):
+            f.write(f"{idx}. {tweet['time']} ({tweet['reason']})\n")
             f.write(f"   Tweet: {tweet['text']}\n\n")
 
-    print(f"✅ Saved {len(all_tweets)} tweets and {len(skipped_tweets)} skipped tweets to {OUTPUT_FILE}")
+    print(f"✅ Saved {len(tweets)} tweets and {len(skipped)} skipped tweets to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     asyncio.run(main())
