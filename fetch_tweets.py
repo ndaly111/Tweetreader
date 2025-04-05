@@ -1,114 +1,104 @@
-import asyncio
-from playwright.async_api import async_playwright
-from datetime import datetime, timedelta
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+import time
 
-LIST_URL = "https://x.com/i/lists/940937136844476421"
+USERNAMES = ["JPFinlayNBCS"]
+NITTER_INSTANCES = [
+    "https://nitter.net",
+    "https://nitter.privacydev.net",
+    "https://nitter.poast.org",
+    "https://nitter.nohost.network",
+]
 OUTPUT_FILE = "tweets.txt"
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 DEBUG_MODE = True
-FILTER_LAST_24_HOURS = True
 
-def convert_to_eastern(iso_time):
+def convert_to_eastern(text_time):
     try:
-        iso_time = iso_time.replace('Z', '+00:00')
-        utc_time = datetime.fromisoformat(iso_time)
-        eastern = utc_time.astimezone(ZoneInfo('America/New_York'))
-        return eastern.strftime("%b %d, %Y - %I:%M %p ET"), utc_time
+        dt_utc = datetime.strptime(text_time, "%b %d, %Y · %I:%M %p UTC").replace(tzinfo=timezone.utc)
+        dt_eastern = dt_utc.astimezone(ZoneInfo("America/New_York"))
+        return dt_eastern.strftime("%b %d, %Y - %I:%M %p ET"), dt_utc
     except Exception as e:
         if DEBUG_MODE:
-            print(f"⚠️ Error parsing time: {e} | Raw time: {iso_time}")
+            print(f"⚠️ Failed to parse time: {e} | Raw: {text_time}")
         return "Unknown Time", None
 
-async def fetch_tweets_from_list():
-    tweets_collected = []
+def fetch_nitter_tweets(username):
+    for instance in NITTER_INSTANCES:
+        url = f"{instance}/{username}"
+        print(f"🔍 Trying {url}")
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=10)
+            if response.status_code != 200:
+                print(f"❌ Status {response.status_code} from {instance}")
+                time.sleep(3)
+                continue
+        except Exception as e:
+            print(f"❌ Request failed: {e}")
+            time.sleep(3)
+            continue
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        tweets = []
+        skipped = []
+
+        for item in soup.select("div.timeline-item"):
+            text_block = item.select_one("div.tweet-content")
+            time_tag = item.select_one("span.tweet-date > a")
+
+            if not text_block or not time_tag:
+                continue
+
+            tweet_text = text_block.get_text(strip=True)
+            raw_time = time_tag.get("title")  # Format: Mar 22, 2025 · 3:51 AM UTC
+
+            eastern_str, utc_time = convert_to_eastern(raw_time)
+            if utc_time and (datetime.now(timezone.utc) - utc_time <= timedelta(hours=24)):
+                tweets.append({
+                    "username": username,
+                    "text": tweet_text,
+                    "time": eastern_str
+                })
+            else:
+                skipped.append({
+                    "username": username,
+                    "text": tweet_text,
+                    "time": eastern_str,
+                    "reason": "⏩ Older than 24 hours"
+                })
+
+        if tweets or skipped:
+            print(f"✅ Fetched {len(tweets)} tweets and skipped {len(skipped)} from {instance}")
+            return tweets, skipped
+
+        time.sleep(3)
+
+    print(f"❌ No working Nitter instance returned tweets for {username}")
+    return [], []
+
+def main():
+    all_tweets = []
     skipped_tweets = []
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        print(f"Fetching tweets from {LIST_URL}")
-        await page.goto(LIST_URL, timeout=60000)
-        await page.wait_for_timeout(5000)  # Let things render
-
-        scrolls = 0
-        MAX_SCROLLS = 10
-        recent_found = False
-
-        while scrolls < MAX_SCROLLS and not recent_found:
-            tweet_blocks = await page.locator('div[role="listitem"] div[data-testid="tweetText"]').element_handles()
-            print(f"✅ Found {len(tweet_blocks)} tweet blocks (scroll {scrolls + 1})")
-
-            for block in tweet_blocks:
-                try:
-                    tweet_text = await block.inner_text()
-                    parent_article = await block.evaluate_handle("node => node.closest('article')")
-                    tweet_time = await parent_article.query_selector('time')
-                    tweet_time_iso = await tweet_time.get_attribute('datetime') if tweet_time else None
-
-                    if not tweet_time_iso:
-                        continue
-
-                    eastern_time_str, utc_time = convert_to_eastern(tweet_time_iso)
-                    tweets_collected.append({
-                        "text": tweet_text.strip(),
-                        "time": eastern_time_str,
-                        "utc_time": utc_time
-                    })
-
-                    if utc_time and (datetime.now(tz=ZoneInfo('UTC')) - utc_time) <= timedelta(hours=24):
-                        recent_found = True
-
-                except Exception as e:
-                    if DEBUG_MODE:
-                        print(f"⚠️ Error processing tweet block: {e}")
-                    continue
-
-            if recent_found:
-                print("✅ Recent tweet found, stopping scroll early")
-                break
-
-            await page.evaluate("window.scrollBy(0, 1500)")
-            await page.wait_for_timeout(4000)
-            scrolls += 1
-
-        if not tweets_collected and DEBUG_MODE:
-            html = await page.content()
-            with open("debug_list.html", "w", encoding="utf-8") as f:
-                f.write(html)
-
-        await browser.close()
-
-    tweets_collected.sort(key=lambda x: x['utc_time'], reverse=True)
-
-    final_tweets = []
-    for tweet in tweets_collected:
-        if FILTER_LAST_24_HOURS:
-            if tweet['utc_time'] and (datetime.now(tz=ZoneInfo('UTC')) - tweet['utc_time']) <= timedelta(hours=24):
-                final_tweets.append(tweet)
-            else:
-                skipped_tweets.append({**tweet, "reason": "⏩ Older than 24 hours"})
-        else:
-            final_tweets.append(tweet)
-
-    return final_tweets, skipped_tweets
-
-async def main():
-    all_tweets, skipped_tweets = await fetch_tweets_from_list()
+    for username in USERNAMES:
+        tweets, skipped = fetch_nitter_tweets(username)
+        all_tweets.extend(tweets)
+        skipped_tweets.extend(skipped)
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write("✅ SAVED TWEETS:\n\n")
         for idx, tweet in enumerate(all_tweets, 1):
-            f.write(f"{idx}. {tweet['time']}\n")
+            f.write(f"{idx}. @{tweet['username']} - {tweet['time']}\n")
             f.write(f"   Tweet: {tweet['text']}\n\n")
 
         f.write("\n⏩ SKIPPED TWEETS:\n\n")
         for idx, tweet in enumerate(skipped_tweets, 1):
-            f.write(f"{idx}. {tweet['time']} ({tweet['reason']})\n")
+            f.write(f"{idx}. @{tweet['username']} - {tweet['time']} ({tweet['reason']})\n")
             f.write(f"   Tweet: {tweet['text']}\n\n")
 
-    print(f"✅ Saved {len(all_tweets)} tweets and {len(skipped_tweets)} skipped tweets to {OUTPUT_FILE}")
+    print(f"✅ Saved {len(all_tweets)} tweets and {len(skipped_tweets)} skipped to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
