@@ -1,109 +1,141 @@
-import requests
-from bs4 import BeautifulSoup
+import random
+import time
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-import time
 
-# Change USERNAMES as needed. Using the account you specified.
-USERNAMES = ["JPFinlayNBCS"]
-
-# List of Nitter instances to try (update if needed)
-NITTER_INSTANCES = [
-    "https://nitter.net",
-    "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
-    "https://nitter.nohost.network",
-]
-
+# Configuration
+USER = "JPFinlayNBCS"
+URL = f"https://twitter.com/{USER}"  # Change if you want to scrape a list instead
 OUTPUT_FILE = "tweets.txt"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+FILTER_LAST_24_HOURS = True
 DEBUG_MODE = True
 
-def convert_to_eastern(text_time):
+def convert_to_eastern(iso_time):
     """
-    Convert a time string in the format: "Mar 22, 2025 · 3:51 AM UTC"
-    to Eastern Time and return a tuple (formatted_string, utc_datetime).
+    Convert ISO time string (e.g., "2025-03-22T03:51:00.000Z")
+    to Eastern Time and return (formatted string, utc_datetime).
     """
     try:
-        # Using strptime to parse the time string. Adjust format if needed.
-        dt_utc = datetime.strptime(text_time, "%b %d, %Y · %I:%M %p UTC").replace(tzinfo=timezone.utc)
-        dt_eastern = dt_utc.astimezone(ZoneInfo("America/New_York"))
-        return dt_eastern.strftime("%b %d, %Y - %I:%M %p ET"), dt_utc
+        iso_time = iso_time.replace("Z", "+00:00")
+        utc_time = datetime.fromisoformat(iso_time)
+        eastern = utc_time.astimezone(ZoneInfo("America/New_York"))
+        return eastern.strftime("%b %d, %Y - %I:%M %p ET"), utc_time
     except Exception as e:
         if DEBUG_MODE:
-            print(f"⚠️ Failed to parse time: {e} | Raw: {text_time}")
+            print(f"Error converting time: {e}")
         return "Unknown Time", None
 
-def fetch_nitter_tweets(username):
-    """
-    Attempts to fetch tweets from the given username using a list of Nitter instances.
-    Returns a tuple (tweets, skipped). Each tweet is a dict containing username, text, and time.
-    """
-    for instance in NITTER_INSTANCES:
-        url = f"{instance}/{username}"
-        print(f"🔍 Trying {url}")
-        try:
-            response = requests.get(url, headers=HEADERS, timeout=10)
-            if response.status_code != 200:
-                print(f"❌ Received status {response.status_code} from {instance}")
-                time.sleep(3)
-                continue
-        except Exception as e:
-            print(f"❌ Request failed from {instance}: {e}")
-            time.sleep(3)
-            continue
+def setup_driver():
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    # Use a realistic user agent
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/115.0.0.0 Safari/537.36")
+    driver = webdriver.Chrome(options=chrome_options)
+    return driver
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        tweets = []
-        skipped = []
+def fetch_tweets():
+    driver = setup_driver()
+    driver.get(URL)
+    time.sleep(5)  # Allow initial page load
 
-        # Attempt to find tweet blocks; based on Nitter's layout these should be under a container like div.timeline-item
-        tweet_items = soup.select("div.timeline-item")
-        print(f"✅ Found {len(tweet_items)} tweet blocks on {instance}")
+    tweets_collected = []
+    seen_tweets = set()
+    scroll_attempts = 0
+    MAX_SCROLLS = 15
+    recent_found = False
 
-        if DEBUG_MODE and len(tweet_items) == 0:
-            # Dump raw HTML for debugging
-            with open("debug_nitter.html", "w", encoding="utf-8") as f:
-                f.write(response.text)
-            print("⚠️ No tweet blocks found. Saved raw HTML to debug_nitter.html for inspection.")
-
-        for item in tweet_items:
-            # Use the Nitter layout: tweet text is often in a div with class "tweet-content"
-            text_block = item.select_one("div.tweet-content")
-            time_link = item.select_one("span.tweet-date > a")
-            if not text_block or not time_link:
-                continue
-
-            tweet_text = text_block.get_text(strip=True)
-            raw_time = time_link.get("title")  # Expected format: "Mar 22, 2025 · 3:51 AM UTC"
-            if not raw_time:
-                if DEBUG_MODE:
-                    print("⚠️ No time string found for a tweet, skipping...")
-                continue
-
-            eastern_str, utc_time = convert_to_eastern(raw_time)
-            if utc_time is None:
-                continue
-
-            # Filter tweets: only include those from the last 24 hours
-            if (datetime.now(timezone.utc) - utc_time) <= timedelta(hours=24):
-                tweets.append({
-                    "username": username,
-                    "text": tweet_text,
-                    "time": eastern_str
-                })
-            else:
-                skipped.append({
-                    "username": username,
+    # Continue scrolling until we either detect at least one tweet within the last 24 hours or reach MAX_SCROLLS.
+    while scroll_attempts < MAX_SCROLLS and not recent_found:
+        articles = driver.find_elements(By.TAG_NAME, "article")
+        print(f"Found {len(articles)} articles on scroll {scroll_attempts+1}")
+        for article in articles:
+            try:
+                # Use a CSS selector to extract tweet text
+                tweet_text_elem = article.find_element(By.CSS_SELECTOR, "div[data-testid='tweetText']")
+                tweet_text = tweet_text_elem.text.strip()
+                if tweet_text in seen_tweets:
+                    continue
+                seen_tweets.add(tweet_text)
+                
+                # Get the time element
+                time_elem = article.find_element(By.TAG_NAME, "time")
+                tweet_time_iso = time_elem.get_attribute("datetime")
+                if not tweet_time_iso:
+                    continue
+                eastern_str, utc_time = convert_to_eastern(tweet_time_iso)
+                tweet = {
+                    "username": USER,
                     "text": tweet_text,
                     "time": eastern_str,
-                    "reason": "⏩ Older than 24 hours"
-                })
+                    "utc_time": utc_time
+                }
+                tweets_collected.append(tweet)
+                # If any tweet is within the last 24 hours, mark as recent
+                if utc_time and (datetime.now(timezone.utc) - utc_time) <= timedelta(hours=24):
+                    recent_found = True
+            except Exception as e:
+                if DEBUG_MODE:
+                    print(f"Error processing an article: {e}")
+                continue
+        
+        if recent_found:
+            print("Recent tweet found, stopping scroll.")
+            break
+        
+        # Simulate human-like scrolling:
+        scroll_distance = random.randint(400, 800)
+        driver.execute_script(f"window.scrollBy(0, {scroll_distance});")
+        pause_time = random.randint(4, 9)
+        print(f"Scrolling {scroll_distance}px, pausing {pause_time} seconds.")
+        time.sleep(pause_time)
+        scroll_attempts += 1
 
-        if tweets or skipped:
-            print(f"✅ From {instance}: Collected {len(tweets)} tweets, skipped {len(skipped)}")
-            return tweets, skipped
+    driver.quit()
 
-        time.sleep(3)
+    # Sort tweets by UTC timestamp (most recent first)
+    tweets_collected.sort(key=lambda x: x["utc_time"], reverse=True)
 
-    print(f
+    # Apply filtering if enabled
+    final_tweets = []
+    skipped_tweets = []
+    for tweet in tweets_collected:
+        if FILTER_LAST_24_HOURS:
+            if tweet["utc_time"] and (datetime.now(timezone.utc) - tweet["utc_time"]) <= timedelta(hours=24):
+                final_tweets.append(tweet)
+            else:
+                tweet["reason"] = "Older than 24 hours"
+                skipped_tweets.append(tweet)
+        else:
+            final_tweets.append(tweet)
+    
+    return final_tweets, skipped_tweets
+
+def main():
+    tweets, skipped = fetch_tweets()
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write("✅ SAVED TWEETS:\n\n")
+        if tweets:
+            for idx, tweet in enumerate(tweets, 1):
+                f.write(f"{idx}. @{tweet['username']} - {tweet['time']}\n")
+                f.write(f"   Tweet: {tweet['text']}\n\n")
+        else:
+            f.write("No tweets found.\n\n")
+        
+        f.write("\n⏩ SKIPPED TWEETS:\n\n")
+        if skipped:
+            for idx, tweet in enumerate(skipped, 1):
+                f.write(f"{idx}. @{tweet['username']} - {tweet['time']} ({tweet.get('reason','')})\n")
+                f.write(f"   Tweet: {tweet['text']}\n\n")
+        else:
+            f.write("No tweets were skipped.\n\n")
+    print(f"✅ Saved {len(tweets)} tweets and {len(skipped)} skipped to {OUTPUT_FILE}")
+
+if __name__ == "__main__":
+    main()
