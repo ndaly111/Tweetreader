@@ -44,7 +44,15 @@ def fetch_nitter_tweets(username):
         tweets = []
         skipped = []
 
-        for item in soup.select("div.timeline-item"):
+        tweet_items = soup.select("div.timeline-item")
+        print(f"✅ Found {len(tweet_items)} tweet blocks on {instance}")
+
+        if DEBUG_MODE and len(tweet_items) == 0:
+            with open("debug_nitter.html", "w", encoding="utf-8") as f:
+                f.write(response.text)
+            print("⚠️ Wrote fallback HTML to debug_nitter.html for inspection")
+
+        for item in tweet_items:
             text_block = item.select_one("div.tweet-content")
             time_tag = item.select_one("span.tweet-date > a")
 
@@ -52,7 +60,7 @@ def fetch_nitter_tweets(username):
                 continue
 
             tweet_text = text_block.get_text(strip=True)
-            raw_time = time_tag.get("title")  # Format: Mar 22, 2025 · 3:51 AM UTC
+            raw_time = time_tag.get("title")
 
             eastern_str, utc_time = convert_to_eastern(raw_time)
             if utc_time and (datetime.now(timezone.utc) - utc_time <= timedelta(hours=24)):
@@ -75,7 +83,7 @@ def fetch_nitter_tweets(username):
 
         time.sleep(3)
 
-    print(f"❌ No working Nitter instance returned tweets for {username}")
+    print(f"❌ No usable tweets found for {username} on any Nitter instance.")
     return [], []
 
 def main():
