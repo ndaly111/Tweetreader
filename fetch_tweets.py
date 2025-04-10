@@ -17,8 +17,10 @@ from zoneinfo import ZoneInfo
 EMAIL = os.environ.get("gmail")
 PASSWORD = os.environ.get("Gmail_Password")
 if not EMAIL or not PASSWORD:
-    print("⚠️ Credentials not set in environment variables!")
+    print("⚠️ Credentials not set. Please set the environment variables 'gmail' and 'Gmail_Password'.")
     exit(1)
+else:
+    print(f"Using email: {EMAIL} (password hidden)")
 
 # ---------------------------
 # Configuration
@@ -53,8 +55,7 @@ def convert_to_eastern(iso_time):
         eastern = utc_time.astimezone(ZoneInfo("America/New_York"))
         return eastern.strftime("%b %d, %Y - %I:%M %p ET"), utc_time
     except Exception as e:
-        if DEBUG_MODE:
-            print(f"Error converting time: {e} | Raw: {iso_time}")
+        print(f"Error converting time: {e} | Raw: {iso_time}")
         return "Unknown Time", None
 
 # ---------------------------
@@ -63,13 +64,17 @@ def convert_to_eastern(iso_time):
 def login_google(driver, email, password):
     print("Starting Google login...")
     driver.get("https://accounts.google.com/v3/signin/identifier?hl=en")
-    # Increase wait times for slower GitHub Actions runners
     WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.ID, "identifierId")))
+    print("Email field located.")
     driver.find_element(By.ID, "identifierId").send_keys(email)
+    print("Email entered.")
     driver.find_element(By.XPATH, "//*[@id='identifierNext']").click()
-    time.sleep(5)
+    print("Clicked 'Next' for email.")
+    time.sleep(5)  # Wait for password field to load
     WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.NAME, "password")))
+    print("Password field located.")
     driver.find_element(By.NAME, "password").send_keys(password)
+    print("Password entered.")
     driver.find_element(By.XPATH, "//*[@id='passwordNext']").click()
     time.sleep(8)
     print("Google login successful.")
@@ -81,10 +86,10 @@ def login_twitter_via_google(driver):
     print("Starting Twitter OAuth login via Google...")
     driver.get("https://twitter.com/i/flow/login")
     try:
-        # Wait longer to accommodate slower loads
         google_btn = WebDriverWait(driver, 60).until(
             EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'Sign in with Google')]"))
         )
+        print("Found 'Sign in with Google' button.")
         google_btn.click()
         time.sleep(12)
         print("Twitter login via Google successful.")
@@ -95,43 +100,49 @@ def login_twitter_via_google(driver):
 # Function: Scrape Tweets from Target Profile
 # ---------------------------
 def scrape_tweets(driver):
-    print(f"Navigating to profile: {TARGET_PROFILE}")
+    print(f"Navigating to Twitter profile: {TARGET_PROFILE}")
     driver.get(TARGET_PROFILE)
-    WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.TAG_NAME, "article")))
-    time.sleep(8)
-    
+    try:
+        WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.TAG_NAME, "article")))
+    except Exception as e:
+        print(f"Error: tweets (article elements) did not load - {e}")
+        return []
+    time.sleep(8)  # Additional wait to ensure tweets load
+
+    # Scrolling behavior: mimic human browsing behavior
     actions = ActionChains(driver)
-    # Simulate human-like scrolling: use a random scroll distance and pause each time
-    for _ in range(10):
+    for i in range(10):
         scroll_distance = random.randint(300, 700)
         actions.send_keys(Keys.PAGE_DOWN).perform()
-        pause = random.uniform(3, 7)
-        print(f"Scrolling {scroll_distance}px, pausing {pause:.2f} seconds...")
+        pause = random.uniform(3, 6)
+        print(f"Scroll {i+1}: Scrolled {scroll_distance}px, pausing for {pause:.2f} seconds")
         time.sleep(pause)
-    
+
     articles = driver.find_elements(By.TAG_NAME, "article")
-    print(f"Found {len(articles)} tweet articles on the page.")
+    print(f"Found {len(articles)} articles on the page.")
     tweets = []
-    for article in articles:
+    for idx, article in enumerate(articles, 1):
         try:
-            # Extract tweet text using a data-testid selector for tweetText
             tweet_text_elem = article.find_element(By.CSS_SELECTOR, "div[data-testid='tweetText']")
             tweet_text = tweet_text_elem.text.strip()
-            # Extract the tweet's timestamp via the <time> element
             time_elem = article.find_element(By.TAG_NAME, "time")
             tweet_time_iso = time_elem.get_attribute("datetime")
             if not tweet_time_iso:
+                print(f"Article {idx}: No datetime attribute found.")
                 continue
             eastern_str, utc_time = convert_to_eastern(tweet_time_iso)
-            # Filter for tweets within the last 24 hours
+            print(f"Article {idx}: Tweet time (UTC): {utc_time}, Eastern: {eastern_str}")
+            # Only include tweets from the last 24 hours
             if utc_time and (datetime.now(timezone.utc) - utc_time) <= timedelta(hours=24):
                 tweets.append({
                     "text": tweet_text,
                     "time": eastern_str
                 })
+                print(f"Article {idx}: Added tweet: {tweet_text[:60]}...")
+            else:
+                print(f"Article {idx}: Tweet is older than 24 hours, skipped.")
         except Exception as e:
-            if DEBUG_MODE:
-                print(f"Error extracting tweet: {e}")
+            print(f"Error processing article {idx}: {e}")
             continue
     return tweets
 
@@ -155,6 +166,7 @@ def main():
                 f.write("No tweets found within the last 24 hours.\n")
     finally:
         driver.quit()
+        print("Driver closed.")
 
 if __name__ == "__main__":
     main()
