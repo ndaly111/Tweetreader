@@ -1,38 +1,35 @@
-name: Fetch Tweets
-
-permissions:
-  contents: write  # ✅ REQUIRED for git push to work
+name: Fetch Tweets via Selenium
 
 on:
   schedule:
-    - cron: '30 13 * * 1-5'  # ✅ Runs at 9:30 AM ET Mon-Fri (adjust as needed)
-  workflow_dispatch:  # ✅ Allows manual trigger
+    - cron: '0 */2 * * *'  # Run every 2 hours; adjust as needed
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
-  fetch:
+  fetch-tweets:
     runs-on: ubuntu-latest
-
+    env:
+      gmail: ${{ secrets.gmail }}
+      Gmail_Password: ${{ secrets.Gmail_Password }}
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'  # ✅ Ensures zoneinfo works
+          python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
-          pip install -r requirements.txt
-          playwright install chromium
+          pip install selenium pandas openpyxl
+
+      - name: Install Chromium and ChromeDriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-chromedriver
+          # Ensure chromedriver is in PATH; adjust the path if necessary:
+          sudo cp /usr/lib/chromium-browser/chromedriver /usr/bin/chromedriver
 
       - name: Run Tweet Scraper
         run: python fetch_tweets.py
-
-      - name: Commit updated tweets
-        run: |
-          git config user.name "GitHub Action"
-          git config user.email "actions@github.com"
-          git add tweets.txt
-          git commit -m "✅ Update tweets feed" || echo "No changes to commit"
-          git push
