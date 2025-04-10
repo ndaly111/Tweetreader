@@ -10,14 +10,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-import pandas as pd
-import openpyxl
 
 # ---------------------------
 # Load Credentials from Environment Variables
 # ---------------------------
-EMAIL = os.environ.get("GMAIL")
-PASSWORD = os.environ.get("GMAIL_PASSWORD")
+EMAIL = os.environ.get("gmail")
+PASSWORD = os.environ.get("Gmail_Password")
+if not EMAIL or not PASSWORD:
+    print("⚠️ Credentials not set in environment variables!")
+    exit(1)
 
 # ---------------------------
 # Configuration
@@ -60,28 +61,32 @@ def convert_to_eastern(iso_time):
 # Function: Login to Google via Selenium
 # ---------------------------
 def login_google(driver, email, password):
+    print("Starting Google login...")
     driver.get("https://accounts.google.com/v3/signin/identifier?hl=en")
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "identifierId")))
+    # Increase wait times for slower GitHub Actions runners
+    WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.ID, "identifierId")))
     driver.find_element(By.ID, "identifierId").send_keys(email)
     driver.find_element(By.XPATH, "//*[@id='identifierNext']").click()
-    time.sleep(3)
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.NAME, "password")))
+    time.sleep(5)
+    WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.NAME, "password")))
     driver.find_element(By.NAME, "password").send_keys(password)
     driver.find_element(By.XPATH, "//*[@id='passwordNext']").click()
-    time.sleep(5)
+    time.sleep(8)
     print("Google login successful.")
 
 # ---------------------------
 # Function: Login to Twitter using Google OAuth
 # ---------------------------
 def login_twitter_via_google(driver):
+    print("Starting Twitter OAuth login via Google...")
     driver.get("https://twitter.com/i/flow/login")
     try:
-        google_btn = WebDriverWait(driver, 20).until(
+        # Wait longer to accommodate slower loads
+        google_btn = WebDriverWait(driver, 60).until(
             EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'Sign in with Google')]"))
         )
         google_btn.click()
-        time.sleep(10)  # Allow time for Twitter to complete authentication using the existing Google session
+        time.sleep(12)
         print("Twitter login via Google successful.")
     except Exception as e:
         print(f"Error during Twitter OAuth login: {e}")
@@ -90,27 +95,35 @@ def login_twitter_via_google(driver):
 # Function: Scrape Tweets from Target Profile
 # ---------------------------
 def scrape_tweets(driver):
+    print(f"Navigating to profile: {TARGET_PROFILE}")
     driver.get(TARGET_PROFILE)
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "article")))
-    time.sleep(5)
+    WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.TAG_NAME, "article")))
+    time.sleep(8)
     
     actions = ActionChains(driver)
-    # Simulate human-like scrolling
-    for _ in range(8):
+    # Simulate human-like scrolling: use a random scroll distance and pause each time
+    for _ in range(10):
+        scroll_distance = random.randint(300, 700)
         actions.send_keys(Keys.PAGE_DOWN).perform()
-        time.sleep(random.uniform(3, 6))
+        pause = random.uniform(3, 7)
+        print(f"Scrolling {scroll_distance}px, pausing {pause:.2f} seconds...")
+        time.sleep(pause)
     
     articles = driver.find_elements(By.TAG_NAME, "article")
+    print(f"Found {len(articles)} tweet articles on the page.")
     tweets = []
     for article in articles:
         try:
+            # Extract tweet text using a data-testid selector for tweetText
             tweet_text_elem = article.find_element(By.CSS_SELECTOR, "div[data-testid='tweetText']")
             tweet_text = tweet_text_elem.text.strip()
+            # Extract the tweet's timestamp via the <time> element
             time_elem = article.find_element(By.TAG_NAME, "time")
             tweet_time_iso = time_elem.get_attribute("datetime")
             if not tweet_time_iso:
                 continue
             eastern_str, utc_time = convert_to_eastern(tweet_time_iso)
+            # Filter for tweets within the last 24 hours
             if utc_time and (datetime.now(timezone.utc) - utc_time) <= timedelta(hours=24):
                 tweets.append({
                     "text": tweet_text,
@@ -128,9 +141,7 @@ def scrape_tweets(driver):
 def main():
     driver = webdriver.Chrome(options=options)
     try:
-        # Login to Google first
         login_google(driver, EMAIL, PASSWORD)
-        # Login to Twitter via Google OAuth
         login_twitter_via_google(driver)
         time.sleep(10)
         tweets = scrape_tweets(driver)
