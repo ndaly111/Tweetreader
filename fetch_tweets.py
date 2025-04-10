@@ -16,8 +16,8 @@ import openpyxl
 # ---------------------------
 # Load Credentials from Environment Variables
 # ---------------------------
-EMAIL = os.environ.get("Gmail")
-PASSWORD = os.environ.get("Gmail_Password")
+EMAIL = os.environ.get("GMAIL")
+PASSWORD = os.environ.get("GMAIL_PASSWORD")
 
 # ---------------------------
 # Configuration
