@@ -9,8 +9,8 @@ jobs:
   fetch-tweets:
     runs-on: ubuntu-latest
     env:
-      gmail: ${{ secrets.gmail }}
-      Gmail_Password: ${{ secrets.Gmail_Password }}
+      gmail: ${{ secrets.GMAIL }}
+      Gmail_Password: ${{ secrets.GMAIL_PASSWORD }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
