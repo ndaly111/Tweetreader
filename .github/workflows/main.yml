@@ -2,15 +2,15 @@ name: Fetch Tweets via Selenium
 
 on:
   schedule:
-    - cron: '0 */2 * * *'  # Run every 2 hours; adjust as needed
-  workflow_dispatch:  # Allows manual triggering
+    - cron: '0 */2 * * *'  # Run every 2 hours
+  workflow_dispatch:  # Manual trigger
 
 jobs:
   fetch-tweets:
     runs-on: ubuntu-latest
     env:
-      gmail: ${{ secrets.GMAIL }}
-      Gmail_Password: ${{ secrets.GMAIL_PASSWORD }}
+      GMAIL: ${{ secrets.GMAIL }}
+      GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -27,9 +27,16 @@ jobs:
       - name: Install Chromium and ChromeDriver
         run: |
           sudo apt-get update
-          sudo apt-get install -y chromium-chromedriver
-          # Ensure chromedriver is in PATH; adjust the path if necessary:
-          sudo cp /usr/lib/chromium-browser/chromedriver /usr/bin/chromedriver
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+          sudo ln -sf $(which chromedriver) /usr/bin/chromedriver
 
       - name: Run Tweet Scraper
         run: python fetch_tweets.py
+
+      - name: Commit tweets if changed
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add tweets.txt
+          git diff --cached --quiet || git commit -m "🔄 Update tweets"
+          git push
