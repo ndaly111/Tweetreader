@@ -14,10 +14,10 @@ from zoneinfo import ZoneInfo
 # ---------------------------
 # Load Credentials from Environment Variables
 # ---------------------------
-EMAIL = os.environ.get("gmail")
-PASSWORD = os.environ.get("Gmail_Password")
+EMAIL = os.environ.get("GMAIL")
+PASSWORD = os.environ.get("GMAIL_PASSWORD")
 if not EMAIL or not PASSWORD:
-    print("⚠️ Credentials not set. Please set the environment variables 'gmail' and 'Gmail_Password'.")
+    print("⚠️ Credentials not set. Please set the environment variables 'GMAIL' and 'GMAIL_PASSWORDS'.")
     exit(1)
 else:
     print(f"Using email: {EMAIL} (password hidden)")
