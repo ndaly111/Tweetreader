@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 EMAIL = os.environ.get("GMAIL")
 PASSWORD = os.environ.get("GMAIL_PASSWORD")
 if not EMAIL or not PASSWORD:
-    print("⚠️ Credentials not set. Please set the environment variables 'GMAIL' and 'GMAIL_PASSWORDS'.")
+    print("⚠️ Credentials not set. Please set the environment variables 'GMAIL' and 'GMAIL_PASSWORD'.")
     exit(1)
 else:
     print(f"Using email: {EMAIL} (password hidden)")
