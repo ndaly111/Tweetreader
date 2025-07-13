@@ -122,7 +122,8 @@ def scrape_tweets(driver):
             if not tweet_time_iso:
                 continue
             eastern_str, utc_time = convert_to_eastern(tweet_time_iso)
-            if utc_time and (datetime.now(timezone.utc) - utc_time) <= timedelta(hours=24):
+            # Only keep tweets from the last 7 days
+            if utc_time and (datetime.now(timezone.utc) - utc_time) <= timedelta(days=7):
                 tweets.append({
                     "text": tweet_text,
                     "time": eastern_str
@@ -151,7 +152,7 @@ def main():
                 for tweet in tweets:
                     f.write(f"{tweet['time']}\n{tweet['text']}\n\n")
             else:
-                f.write("No tweets found within the last 24 hours.\n")
+                f.write("No tweets found within the last 7 days.\n")
     finally:
         driver.quit()
         print("🚪 Driver closed.")
