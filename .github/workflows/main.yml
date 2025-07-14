@@ -2,6 +2,7 @@ name: Fetch Tweets via Selenium
 
 on:
   schedule:
+    - cron: "30 10 * * 1-5"  # Run at 10:30 UTC Monday-Friday
   workflow_dispatch:  # Manual trigger
 
 jobs:
