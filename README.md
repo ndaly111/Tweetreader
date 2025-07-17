@@ -1,8 +1,10 @@
 # Tweetreader
 
-This project fetches the latest tweets from a specific Twitter profile using Selenium.
+This project fetches the latest tweets from a specific Twitter profile using the
+public Nitter RSS feed. No API credentials or login are required.
 
-The `fetch_tweets.py` script logs in to Twitter via a Google account (credentials supplied through the `GMAIL` and `GMAIL_PASSWORD` environment variables) and saves recent tweets to `tweets.txt`.
+The `fetch_tweets.py` script downloads the user's RSS feed and saves recent
+tweets to `tweets.txt`.
 
 By default it retrieves tweets from the last seven days of `JPFinlayNBCS`.
 
@@ -12,7 +14,7 @@ Install the dependencies and run the script:
 
 ```bash
 pip install -r requirements.txt
-GMAIL=your_email@gmail.com GMAIL_PASSWORD=your_password python fetch_tweets.py
+python fetch_tweets.py  # optionally set TWITTER_USER and NITTER_BASE
 ```
 
 The results will be written to `tweets.txt`.
