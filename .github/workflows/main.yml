@@ -1,16 +1,13 @@
-name: Fetch Tweets via Selenium
+name: Fetch Tweets
 
 on:
   schedule:
-    - cron: "30 10 * * 1-5"  # Run at 10:30 UTC Monday-Friday
+    - cron: '30 10 * * 1-5'  # Run at 10:30 UTC Monday–Friday
   workflow_dispatch:  # Manual trigger
 
 jobs:
   fetch-tweets:
     runs-on: ubuntu-latest
-    env:
-      GMAIL: ${{ secrets.GMAIL }}
-      GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -20,23 +17,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python dependencies
-        run: |
-          pip install selenium pandas openpyxl
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - name: Install Chromium and ChromeDriver
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver
-          sudo ln -sf $(which chromedriver) /usr/bin/chromedriver
+      - name: Run multi-account tweet fetcher
+        run: python fetch_multi.py
 
-      - name: Run Tweet Scraper
-        run: python fetch_tweets.py
-
-      - name: Commit tweets if changed
+      - name: Commit results if changed
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git add tweets.txt
-          git diff --cached --quiet || git commit -m "🔄 Update tweets"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions@users.noreply.github.com"
+          git add tweets.xlsx tweets.txt
+          git diff --cached --quiet || git commit -m "Update tweets"
           git push
