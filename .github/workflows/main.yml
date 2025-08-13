@@ -9,8 +9,9 @@ jobs:
   fetch-tweets:
     runs-on: ubuntu-latest
         env:
-                NITTER_BASE: 'https://nitter.poast.org'
-                DAYS: '1'
+              NITTER_BASE: 'https://nitter.poast.org'
+         
+              DAYS: '1'
 
     steps:
       - name: Checkout repository
