@@ -75,10 +75,12 @@ def main() -> None:
         df.drop(columns=["parsed_time"], inplace=True)
         df.to_excel(OUTPUT_FILE, index=False)
     else:
-        # If no tweets were found, write a simple message to a text file
+        # If no tweets were found, write an empty Excel file and a message
+        empty_df = pd.DataFrame()
+        empty_df.to_excel(OUTPUT_FILE, index=False)
         with open("tweets.txt", "w", encoding="utf-8") as f:
             f.write(f"No tweets found within the last {DAYS} days.\n")
-
+       
 
 if __name__ == "__main__":
     main()
