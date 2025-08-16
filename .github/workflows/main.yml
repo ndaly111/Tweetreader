@@ -35,8 +35,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage any changes to tweet artifacts. If there are no tweet files yet, ignore errors.
           git add -A tweets.txt tweets.xlsx || true
+          # Only proceed with a commit if there are staged changes.
           if ! git diff --cached --quiet; then
+            # Pull latest commits from remote to avoid non-fast-forward push failures.
+            # Using --rebase prevents merge commits when syncing with origin/main.
+            git pull --rebase
             git commit -m "Update tweets via Nitter RSS"
             git push
           else
