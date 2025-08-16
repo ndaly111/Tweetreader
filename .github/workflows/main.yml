@@ -40,8 +40,10 @@ jobs:
           # Only proceed with a commit if there are staged changes.
           if ! git diff --cached --quiet; then
             # Pull latest commits from remote to avoid non-fast-forward push failures.
-            # Using --rebase prevents merge commits when syncing with origin/main.
-            git pull --rebase
+            # Using --rebase prevents merge commits when syncing with origin/main. The
+            # --autostash option temporarily stashes any staged changes so the pull
+            # can proceed even if there are uncommitted files, then reapplies them.
+            git pull --rebase --autostash
             git commit -m "Update tweets via Nitter RSS"
             git push
           else
