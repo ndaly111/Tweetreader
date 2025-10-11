@@ -11,6 +11,7 @@ from sp500_growth import (
     calculate_implied_growth,
     load_historical_data,
     run_pipeline,
+    _resolve_column,  # type: ignore[attr-defined]
     upsert_implied_growth,
 )
 
@@ -91,3 +92,10 @@ def test_run_pipeline_end_to_end(tmp_path: Path) -> None:
         stored = conn.execute("SELECT implied_growth FROM implied_growth ORDER BY date").fetchall()
 
     assert stored == [(15.5,), (17.4,)]
+
+
+def test_resolve_column_handles_observation_date() -> None:
+    column = _resolve_column(["observation_date", "DGS10"], "DATE", "Date")
+
+    assert column == "observation_date"
+
