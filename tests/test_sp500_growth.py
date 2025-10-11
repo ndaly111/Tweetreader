@@ -27,6 +27,16 @@ def test_load_historical_data_merges_multiple_csvs(tmp_path: Path) -> None:
     assert series.data.iloc[1]["risk_free_rate"] == 4.6
 
 
+def test_load_historical_data_understands_dgs10(tmp_path: Path) -> None:
+    (tmp_path / "pe.csv").write_text("""DATE,PE\n2015-10-01,16.3\n""")
+    (tmp_path / "rates.csv").write_text("""observation_date,DGS10\n2015-10-01,2.05\n""")
+
+    series = load_historical_data(tmp_path)
+
+    assert list(series.data.columns) == ["date", "pe_ratio", "risk_free_rate"]
+    assert series.data.iloc[0]["risk_free_rate"] == 2.05
+
+
 def test_calculate_implied_growth_handles_decimal_rates() -> None:
     df = pd.DataFrame(
         {

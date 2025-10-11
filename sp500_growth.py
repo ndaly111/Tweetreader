@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import sqlite3
 from typing import Iterable
 
@@ -23,10 +24,26 @@ _PE_CANDIDATES = {
     "sp500_pe", "sp500 p/e",
 }
 _RATE_CANDIDATES = {
-    "rate", "risk_free_rate", "risk free rate", "yield", "treasury_yield",
-    "treasury yield", "treasury rate", "ten_year", "10y", "t10y",
+    "rate",
+    "risk_free_rate",
+    "risk free rate",
+    "yield",
+    "treasury_yield",
+    "treasury yield",
+    "treasury rate",
+    "ten_year",
+    "10y",
+    "t10y",
+    "dgs10",
 }
 _DATE_CANDIDATES = {"date", "timestamp", "time"}
+
+
+def _tokenise(name: str) -> set[str]:
+    """Split *name* into lowercase tokens for fuzzy column matching."""
+
+    parts = re.split(r"[^a-z0-9]+", name)
+    return {part for part in parts if part}
 
 
 @dataclass
@@ -41,7 +58,8 @@ class HistoricalSeries:
 
 def _normalise_column_name(name: str) -> str | None:
     lowered = name.strip().lower()
-    if lowered in _DATE_CANDIDATES:
+    tokens = _tokenise(lowered)
+    if any(candidate == lowered or candidate in tokens for candidate in _DATE_CANDIDATES):
         return "date"
     if any(candidate in lowered for candidate in _PE_CANDIDATES):
         return "pe_ratio"
